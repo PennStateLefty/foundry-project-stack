@@ -1,0 +1,47 @@
+name: Foundry Project
+version: 1.0.0
+summary: Self-service Foundry Project under an existing Foundry account
+description: >
+  Provisions a Microsoft Foundry Project (CognitiveServices/accounts/projects)
+  as a child of a pre-existing Foundry account (kind: AIServices). Grants the
+  requesting developer the Azure AI User role on the project. Designed for
+  developer self-service via the Azure Deployment Environments developer portal.
+runner: Bicep
+templatePath: main.bicep
+parameters:
+  - id: foundryAccountName
+    name: foundryAccountName
+    description: "Name of the existing Foundry account (CognitiveServices/accounts resource)"
+    type: string
+    required: true
+
+  - id: projectName
+    name: projectName
+    description: "Name for the Foundry Project (2-64 chars, alphanumeric + .-_)"
+    type: string
+    required: true
+
+  - id: developerPrincipalId
+    name: developerPrincipalId
+    description: "Azure AD Object (Principal) ID of the developer requesting the project"
+    type: string
+    required: true
+
+  - id: location
+    name: location
+    description: "Azure region (must match the Foundry account location)"
+    type: string
+    required: false
+    default: "[resourceGroup().location]"
+
+  - id: displayName
+    name: displayName
+    description: "Optional display name for the project in the Foundry portal"
+    type: string
+    required: false
+
+  - id: projectDescription
+    name: projectDescription
+    description: "Optional description for the project"
+    type: string
+    required: false

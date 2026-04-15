@@ -88,13 +88,17 @@ Foundry account:
 4. Set the **deployment subscription** and **resource group** where the Foundry
    account lives.
 
-### 3. Configure TTL Policy
+### 3. Environment Expiration (TTL)
 
-1. On the environment type, set the **Expiration policy**:
-   - **Maximum environment lifetime** — e.g., 7 days, 30 days.
-   - **Action on expiration** — Delete.
-2. This ensures the Foundry Project (and its role assignments) are automatically
-   removed when the TTL expires.
+TTL is configured **per environment at creation time**, not as a blanket policy
+on the Environment Type.
+
+- **At creation:** In the developer portal, toggle **"Enable scheduled deletion"**
+  and set an expiration date/time.
+- **After creation:** Developers can adjust the expiration on their environment
+  in the developer portal settings.
+- **Admin override:** Project Admins can manage deletion schedules for any
+  environment in the Azure Portal under **ADE Project → Environments**.
 
 ## Testing
 

@@ -15,6 +15,12 @@ parameters:
     type: string
     required: true
 
+  - id: foundryAccountResourceGroup
+    name: foundryAccountResourceGroup
+    description: "Resource group containing the existing Foundry account"
+    type: string
+    required: true
+
   - id: projectName
     name: projectName
     description: "Name for the Foundry Project (2-64 chars, alphanumeric + .-_)"
@@ -25,8 +31,7 @@ parameters:
     name: location
     description: "Azure region (must match the Foundry account location)"
     type: string
-    required: false
-    default: "[resourceGroup().location]"
+    required: true
 
   - id: displayName
     name: displayName

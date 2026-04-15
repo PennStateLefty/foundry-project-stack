@@ -21,12 +21,6 @@ parameters:
     type: string
     required: true
 
-  - id: developerPrincipalId
-    name: developerPrincipalId
-    description: "Azure AD Object (Principal) ID of the developer requesting the project"
-    type: string
-    required: true
-
   - id: location
     name: location
     description: "Azure region (must match the Foundry account location)"

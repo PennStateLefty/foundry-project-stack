@@ -65,10 +65,11 @@ Foundry account:
 | `Microsoft.CognitiveServices/accounts/projects/write` | Create the project |
 | `Microsoft.CognitiveServices/accounts/projects/delete` | TTL cleanup |
 | `Microsoft.CognitiveServices/accounts/read` | Reference the existing account |
-| `Microsoft.Authorization/roleAssignments/write` | Assign Azure AI User to the developer |
 
-> **Tip:** The **Contributor** + **User Access Administrator** built-in roles
-> on the resource group cover all of the above.
+> **Note:** RBAC role assignments have been removed from the Bicep template to
+> avoid ADE permission pre-flight validation issues. Assign **Azure AI User**
+> on the project manually after creation, or add role assignments back once
+> the ADE identity permissions are sorted out. See [Adding RBAC Back](#adding-rbac-back).
 
 ## Setup
 
@@ -110,7 +111,6 @@ on the Environment Type.
 4. Fill in the parameters:
    - `foundryAccountName` — name of the existing Foundry account.
    - `projectName` — a unique name for your project.
-   - `developerPrincipalId` — your Azure AD Object ID.
 5. Click **Create**.
 
 ### Validate
@@ -145,7 +145,6 @@ az resource delete \
 |-----------|----------|-------------|
 | `foundryAccountName` | Yes | Name of the existing Foundry account |
 | `projectName` | Yes | Name for the new Foundry Project (2-64 chars) |
-| `developerPrincipalId` | Yes | Azure AD Object ID of the developer |
 | `location` | No | Azure region (defaults to resource group location) |
 | `displayName` | No | Friendly name shown in the Foundry portal |
 | `projectDescription` | No | Description of the project |
@@ -155,7 +154,6 @@ az resource delete \
 | Resource | Type |
 |----------|------|
 | Foundry Project | `Microsoft.CognitiveServices/accounts/projects` |
-| Azure AI User role assignment | `Microsoft.Authorization/roleAssignments` |
 
 ### Outputs
 
@@ -209,6 +207,33 @@ foundry-project-stack/
         ├── environment.yaml             # ADE catalog manifest
         └── main.bicep                   # Bicep template
 ```
+
+## Adding RBAC Back
+
+The Bicep template was simplified to remove role assignments due to ADE's
+permission pre-flight validation requiring the Dev Center identity to have
+`User Access Administrator` at the subscription level. To re-enable RBAC:
+
+1. Add a `developerPrincipalId` parameter to `main.bicep` and `environment.yaml`.
+2. Add the role assignment resource:
+
+```bicep
+var azureAiUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
+
+resource aiUserAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundryProject.id, developerPrincipalId, azureAiUserRoleId)
+  scope: foundryProject
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', azureAiUserRoleId)
+    principalId: developerPrincipalId
+    principalType: 'User'
+  }
+}
+```
+
+3. Grant **User Access Administrator** to the ADE deployment identity on the
+   target subscription (the Dev Center identity may also need this — the error
+   message references "DevCenter identity" specifically).
 
 ## References
 

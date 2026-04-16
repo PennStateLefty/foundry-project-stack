@@ -1,0 +1,81 @@
+name: "🚀 Foundry Project Request"
+description: "Request a new Foundry Project under an existing Foundry account"
+title: "[Foundry Project] "
+labels: ["foundry-project-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Request a Foundry Project
+        Fill out this form to provision a new Foundry Project. An automated
+        review will validate your request and approve it if it meets policy.
+
+  - type: input
+    id: foundry-account-name
+    attributes:
+      label: Foundry Account Name
+      description: "Name of the existing Foundry account (CognitiveServices/accounts resource)"
+      placeholder: "e.g. foundry-deployment-env-test"
+    validations:
+      required: true
+
+  - type: input
+    id: foundry-account-rg
+    attributes:
+      label: Foundry Account Resource Group
+      description: "Resource group containing the existing Foundry account"
+      placeholder: "e.g. rg-dev-center-foundry"
+    validations:
+      required: true
+
+  - type: input
+    id: project-name
+    attributes:
+      label: Project Name
+      description: "Name for the new Foundry Project (2-64 chars, alphanumeric + .-_)"
+      placeholder: "e.g. my-team-project"
+    validations:
+      required: true
+
+  - type: input
+    id: entra-upn
+    attributes:
+      label: Entra UPN (Email)
+      description: "Your Microsoft Entra ID email (e.g. jane@contoso.com). Used to grant you Azure AI User access."
+      placeholder: "e.g. jane.doe@contoso.com"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: ttl
+    attributes:
+      label: Time to Live
+      description: "How long should this project exist before automatic cleanup?"
+      options:
+        - "1 day"
+        - "3 days"
+        - "7 days"
+        - "14 days"
+        - "30 days"
+        - "No expiration"
+      default: 2
+    validations:
+      required: true
+
+  - type: input
+    id: display-name
+    attributes:
+      label: Display Name (Optional)
+      description: "Friendly name shown in the Foundry portal. Defaults to the project name."
+      placeholder: "e.g. My Team's Sandbox"
+    validations:
+      required: false
+
+  - type: textarea
+    id: project-description
+    attributes:
+      label: Project Description (Optional)
+      description: "Description of the project and its purpose."
+      placeholder: "e.g. Sandbox environment for testing GPT-4o integrations"
+    validations:
+      required: false

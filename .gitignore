@@ -11,6 +11,7 @@ Thumbs.db
 # Bicep build output
 *.json
 !**/parameters.json
+!config/**/*.json
 
 # Azure CLI
 .azure/

@@ -1,0 +1,261 @@
+name: Deploy Foundry Project
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  id-token: write
+  issues: write
+  contents: read
+
+env:
+  BICEP_PATH: environments/foundry-project/main.bicep
+
+jobs:
+  deploy:
+    name: Deploy Foundry Project
+    if: github.event.label.name == 'approved' && contains(github.event.issue.labels.*.name, 'foundry-project-request')
+    runs-on: ubuntu-latest
+    environment: azure-deploy
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Parse issue form fields
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body;
+
+            function extractField(body, label) {
+              // GitHub issue forms render as "### Label\n\nValue\n"
+              const regex = new RegExp(`### ${label}\\s*\\n\\n([^\\n]+)`, 'i');
+              const match = body.match(regex);
+              return match ? match[1].trim() : '';
+            }
+
+            const fields = {
+              foundryAccountName: extractField(body, 'Foundry Account Name'),
+              foundryAccountRg: extractField(body, 'Foundry Account Resource Group'),
+              projectName: extractField(body, 'Project Name'),
+              entraUpn: extractField(body, 'Entra UPN \\(Email\\)'),
+              ttl: extractField(body, 'Time to Live'),
+              displayName: extractField(body, 'Display Name \\(Optional\\)'),
+              projectDescription: extractField(body, 'Project Description \\(Optional\\)'),
+            };
+
+            // Validate required fields
+            const required = ['foundryAccountName', 'foundryAccountRg', 'projectName', 'entraUpn', 'ttl'];
+            for (const field of required) {
+              if (!fields[field]) {
+                core.setFailed(`Missing required field: ${field}`);
+                return;
+              }
+            }
+
+            // Parse TTL to days
+            let ttlDays = 7;
+            const ttlMatch = fields.ttl.match(/(\d+)\s*day/i);
+            if (ttlMatch) {
+              ttlDays = parseInt(ttlMatch[1], 10);
+            } else if (fields.ttl.toLowerCase().includes('no expiration')) {
+              ttlDays = 0; // 0 = no expiration
+            }
+
+            // Calculate expiration date
+            let expiresAt = '';
+            if (ttlDays > 0) {
+              const expiry = new Date();
+              expiry.setDate(expiry.getDate() + ttlDays);
+              expiresAt = expiry.toISOString();
+            }
+
+            for (const [key, value] of Object.entries(fields)) {
+              core.setOutput(key, value);
+            }
+            core.setOutput('ttlDays', ttlDays.toString());
+            core.setOutput('expiresAt', expiresAt);
+            core.setOutput('issueNumber', context.payload.issue.number.toString());
+
+      - name: Validate against allowlist
+        id: validate
+        run: |
+          ACCOUNT="${{ steps.parse.outputs.foundryAccountName }}"
+          RG="${{ steps.parse.outputs.foundryAccountRg }}"
+
+          # Check allowlist
+          MATCH=$(jq -r --arg acct "$ACCOUNT" --arg rg "$RG" \
+            '.allowedTargets[] | select(.foundryAccountName == $acct and .resourceGroup == $rg) | .foundryAccountName' \
+            config/allowed-targets.json)
+
+          if [ -z "$MATCH" ]; then
+            echo "::error::Foundry account '$ACCOUNT' in RG '$RG' is not in the allowlist"
+            exit 1
+          fi
+
+          echo "target-validated=true" >> "$GITHUB_OUTPUT"
+
+      - name: Login to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve Entra UPN to Object ID
+        id: resolve-identity
+        run: |
+          UPN="${{ steps.parse.outputs.entraUpn }}"
+          OID=$(az ad user show --id "$UPN" --query id -o tsv 2>/dev/null || true)
+
+          if [ -z "$OID" ]; then
+            echo "::error::Could not resolve Entra UPN '$UPN' to an Object ID"
+            exit 1
+          fi
+
+          echo "objectId=$OID" >> "$GITHUB_OUTPUT"
+          echo "Resolved $UPN → $OID"
+
+      - name: Get Foundry account location
+        id: get-location
+        run: |
+          ACCOUNT="${{ steps.parse.outputs.foundryAccountName }}"
+          RG="${{ steps.parse.outputs.foundryAccountRg }}"
+
+          LOCATION=$(az cognitiveservices account show \
+            --name "$ACCOUNT" \
+            --resource-group "$RG" \
+            --query location -o tsv 2>/dev/null || true)
+
+          if [ -z "$LOCATION" ]; then
+            echo "::error::Could not find Foundry account '$ACCOUNT' in RG '$RG'"
+            exit 1
+          fi
+
+          echo "location=$LOCATION" >> "$GITHUB_OUTPUT"
+          echo "Foundry account location: $LOCATION"
+
+      - name: Deploy Bicep template
+        id: deploy
+        run: |
+          PROJECT_NAME="${{ steps.parse.outputs.projectName }}"
+          DISPLAY_NAME="${{ steps.parse.outputs.displayName }}"
+          DESCRIPTION="${{ steps.parse.outputs.projectDescription }}"
+          ISSUE_NUM="${{ steps.parse.outputs.issueNumber }}"
+          EXPIRES_AT="${{ steps.parse.outputs.expiresAt }}"
+          UPN="${{ steps.parse.outputs.entraUpn }}"
+
+          # Default display name to project name
+          if [ -z "$DISPLAY_NAME" ]; then
+            DISPLAY_NAME="$PROJECT_NAME"
+          fi
+
+          # Default description
+          if [ -z "$DESCRIPTION" ]; then
+            DESCRIPTION="Provisioned via GitHub Issue #${ISSUE_NUM}"
+          fi
+
+          # Build tags JSON
+          TAGS_JSON=$(jq -n \
+            --arg managed "github-actions" \
+            --arg source "foundry-project-request" \
+            --arg issue "$ISSUE_NUM" \
+            --arg requestor "$UPN" \
+            --arg expires "$EXPIRES_AT" \
+            --arg repo "${{ github.repository }}" \
+            '{
+              "managed-by": $managed,
+              "provisioning-source": $source,
+              "issue-number": $issue,
+              "requestor": $requestor,
+              "expires-at": $expires,
+              "source-repo": $repo
+            }')
+
+          az deployment group create \
+            --resource-group "${{ steps.parse.outputs.foundryAccountRg }}" \
+            --template-file "${{ env.BICEP_PATH }}" \
+            --parameters \
+              foundryAccountName="${{ steps.parse.outputs.foundryAccountName }}" \
+              foundryAccountResourceGroup="${{ steps.parse.outputs.foundryAccountRg }}" \
+              projectName="$PROJECT_NAME" \
+              location="${{ steps.get-location.outputs.location }}" \
+              displayName="$DISPLAY_NAME" \
+              projectDescription="$DESCRIPTION" \
+              developerPrincipalId="${{ steps.resolve-identity.outputs.objectId }}" \
+              tags="$TAGS_JSON" \
+            --name "gh-issue-${ISSUE_NUM}-${PROJECT_NAME}" \
+            --query 'properties.outputs' -o json | tee deployment-output.json
+
+          # Extract resource ID from deployment outputs
+          RESOURCE_ID=$(jq -r '.projectResourceId.value // empty' deployment-output.json)
+          echo "resourceId=$RESOURCE_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on issue with result
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const resourceId = '${{ steps.deploy.outputs.resourceId }}';
+            const projectName = '${{ steps.parse.outputs.projectName }}';
+            const location = '${{ steps.get-location.outputs.location }}';
+            const expiresAt = '${{ steps.parse.outputs.expiresAt }}';
+            const upn = '${{ steps.parse.outputs.entraUpn }}';
+
+            const expiryText = expiresAt
+              ? `🕐 **Expires:** ${new Date(expiresAt).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
+              : '♾️ **No expiration** (manual cleanup required)';
+
+            const body = `## ✅ Foundry Project Deployed Successfully
+
+            | Detail | Value |
+            |--------|-------|
+            | **Project Name** | \`${projectName}\` |
+            | **Location** | \`${location}\` |
+            | **RBAC** | Azure AI User granted to \`${upn}\` |
+            | **Resource ID** | \`${resourceId}\` |
+
+            ${expiryText}
+
+            🔗 **Access your project:** [Azure AI Foundry Portal](https://ai.azure.com)
+
+            ---
+            *Deployed by GitHub Actions run [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: body,
+            });
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              state: 'closed',
+              state_reason: 'completed',
+            });
+
+      - name: Comment on issue with failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `## ❌ Foundry Project Deployment Failed
+
+            The deployment encountered an error. Please check the
+            [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            for details.
+
+            A team admin can re-trigger by removing and re-adding the \`approved\` label.`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: body,
+            });

@@ -1,0 +1,104 @@
+name: Cleanup Expired Foundry Projects
+
+on:
+  schedule:
+    # Run daily at 06:00 UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  cleanup:
+    name: Cleanup Expired Projects
+    runs-on: ubuntu-latest
+    environment: azure-deploy
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Find and delete expired Foundry Projects
+        run: |
+          set -euo pipefail
+
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "Current UTC time: $NOW"
+          DELETED=0
+          FAILED=0
+          SKIPPED=0
+
+          # Read all allowed target RGs from config
+          RG_LIST=$(jq -r '.allowedTargets[].resourceGroup' config/allowed-targets.json | sort -u)
+
+          for RG in $RG_LIST; do
+            echo ""
+            echo "=== Scanning resource group: $RG ==="
+
+            # List all CognitiveServices accounts/projects in this RG
+            PROJECTS=$(az resource list \
+              --resource-group "$RG" \
+              --resource-type "Microsoft.CognitiveServices/accounts/projects" \
+              --query "[].{id:id, name:name, tags:tags}" \
+              -o json 2>/dev/null || echo "[]")
+
+            COUNT=$(echo "$PROJECTS" | jq length)
+            echo "Found $COUNT Foundry Projects in $RG"
+
+            echo "$PROJECTS" | jq -c '.[]' | while read -r PROJECT; do
+              NAME=$(echo "$PROJECT" | jq -r '.name')
+              ID=$(echo "$PROJECT" | jq -r '.id')
+              MANAGED_BY=$(echo "$PROJECT" | jq -r '.tags["managed-by"] // empty')
+              SOURCE=$(echo "$PROJECT" | jq -r '.tags["provisioning-source"] // empty')
+              EXPIRES_AT=$(echo "$PROJECT" | jq -r '.tags["expires-at"] // empty')
+              ISSUE=$(echo "$PROJECT" | jq -r '.tags["issue-number"] // "unknown"')
+
+              # Only manage resources we created
+              if [ "$MANAGED_BY" != "github-actions" ] || [ "$SOURCE" != "foundry-project-request" ]; then
+                echo "  ⏭️  $NAME — not managed by this workflow, skipping"
+                SKIPPED=$((SKIPPED + 1))
+                continue
+              fi
+
+              # Skip if no expiration tag
+              if [ -z "$EXPIRES_AT" ]; then
+                echo "  ♾️  $NAME — no expiration set, skipping"
+                SKIPPED=$((SKIPPED + 1))
+                continue
+              fi
+
+              # Compare timestamps
+              if [[ "$NOW" > "$EXPIRES_AT" ]]; then
+                echo "  🗑️  $NAME — expired at $EXPIRES_AT (issue #$ISSUE), deleting..."
+                if az resource delete --ids "$ID" --verbose 2>&1; then
+                  echo "  ✅  $NAME deleted successfully"
+                  DELETED=$((DELETED + 1))
+                else
+                  echo "  ❌  $NAME deletion failed"
+                  FAILED=$((FAILED + 1))
+                fi
+              else
+                echo "  ⏳  $NAME — expires at $EXPIRES_AT, still active"
+                SKIPPED=$((SKIPPED + 1))
+              fi
+            done
+          done
+
+          echo ""
+          echo "=== Cleanup Summary ==="
+          echo "Deleted: $DELETED"
+          echo "Failed:  $FAILED"
+          echo "Skipped: $SKIPPED"
+
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::warning::$FAILED project(s) failed to delete"
+          fi

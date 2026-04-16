@@ -25,6 +25,9 @@ param projectDescription string
 @description('Object ID (principal ID) of the developer to grant Azure AI User on the project.')
 param developerPrincipalId string
 
+@description('Tags to apply to the Foundry Project resource.')
+param tags object = {}
+
 // Reference the existing Foundry account in this resource group
 resource foundryAccount 'Microsoft.CognitiveServices/accounts@2025-06-01' existing = {
   name: foundryAccountName
@@ -35,6 +38,7 @@ resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2025-06-0
   parent: foundryAccount
   name: projectName
   location: location
+  tags: tags
   identity: {
     type: 'SystemAssigned'
   }

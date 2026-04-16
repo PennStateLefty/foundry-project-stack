@@ -1,0 +1,27 @@
+{
+  "$schema": "./allowed-targets.schema.json",
+  "description": "Policy configuration for Foundry Project self-service provisioning. The agentic workflow and deploy workflow both validate requests against this file.",
+  "allowedTargets": [
+    {
+      "subscriptionId": "987a5b92-2573-4981-a76c-bbd7756592c8",
+      "resourceGroup": "rg-dev-center-foundry",
+      "foundryAccountName": "foundry-deployment-env-test",
+      "description": "Prototype Foundry account for ADE/GH Actions testing"
+    }
+  ],
+  "ttlPolicy": {
+    "maxDays": 30,
+    "defaultDays": 7,
+    "allowNoExpiration": false
+  },
+  "approvalPolicy": {
+    "autoApproveWhenAllChecksPassed": true,
+    "escalationTeam": "@PennStateLefty/foundry-admins",
+    "escalationReasons": [
+      "Foundry account not in allowlist",
+      "TTL exceeds maximum",
+      "No expiration requested when policy disallows it",
+      "Invalid Entra UPN format"
+    ]
+  }
+}

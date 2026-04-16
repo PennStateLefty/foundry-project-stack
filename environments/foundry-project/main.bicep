@@ -42,6 +42,9 @@ param projectDescription string = 'Self-service Foundry Project provisioned via 
 @description('Object ID of the developer. Auto-populated by ADE from the requesting user context.')
 param developerPrincipalId string
 
+@description('Tags to apply to the Foundry Project (used by GitHub Actions workflow for lifecycle management).')
+param tags object = {}
+
 // === Module: Deploy project into the Foundry account's resource group ========
 
 module foundryProjectModule 'foundry-project.bicep' = {
@@ -54,6 +57,7 @@ module foundryProjectModule 'foundry-project.bicep' = {
     displayName: displayName
     projectDescription: projectDescription
     developerPrincipalId: developerPrincipalId
+    tags: tags
   }
 }
 

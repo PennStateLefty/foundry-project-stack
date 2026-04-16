@@ -84,15 +84,14 @@ Foundry account:
 ### 2. Configure the Environment Type
 
 1. In your **ADE Project**, go to **Environment Types**.
-2. Create or edit an environment type (e.g., "Foundry-Dev").
+2. Create or edit an environment type (e.g., "Sandbox").
 3. Set the **deployment identity** (managed identity with the permissions above).
-4. **CRITICAL:** Set the **resource group** to **"Use existing"** and select the
-   resource group where the Foundry account lives. Do NOT use "Create new".
-   - This ensures the Bicep template can reference the parent Foundry account.
-   - This ensures ADE TTL expiration deletes only the Foundry Project resource,
-     not the entire resource group.
-5. Set the **deployment subscription** to the subscription containing the Foundry
+4. Set the **deployment subscription** to the subscription containing the Foundry
    account.
+
+> **Note:** ADE always creates a new resource group per environment. The Bicep
+> template uses a cross-RG module to deploy the Foundry Project into the
+> Foundry account's existing RG. See [TTL Limitation](#ttl-limitation) below.
 
 ### 3. Environment Expiration (TTL)
 
@@ -115,6 +114,7 @@ on the Environment Type.
 3. Choose the **"Foundry Project"** catalog item.
 4. Fill in the parameters:
    - `foundryAccountName` — name of the existing Foundry account.
+   - `foundryAccountResourceGroup` — RG where the Foundry account lives.
    - `projectName` — a unique name for your project.
    - `location` — Azure region matching the Foundry account (e.g., `eastus2`).
 5. Click **Create**.
@@ -149,7 +149,8 @@ az resource delete \
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `foundryAccountName` | Yes | Name of the existing Foundry account (must be in the target RG) |
+| `foundryAccountName` | Yes | Name of the existing Foundry account |
+| `foundryAccountResourceGroup` | Yes | Resource group containing the Foundry account |
 | `projectName` | Yes | Name for the new Foundry Project (2-64 chars) |
 | `location` | Yes | Azure region (must match the Foundry account location) |
 | `displayName` | No | Friendly name shown in the Foundry portal |
@@ -171,17 +172,26 @@ az resource delete \
 
 ## Known Risks & Limitations
 
-### Existing Resource Group Requirement
+### TTL Limitation
 
-The ADE Environment Type **must** be configured to use the existing resource
-group where the Foundry account lives (not "Create new"). This is required
-because:
+ADE always creates a **new resource group** per environment — there is no option
+to deploy into an existing RG. Since the Foundry Project must be a child of the
+existing Foundry account (in its own RG), the Bicep uses a cross-RG module to
+deploy the project into the Foundry account's RG.
 
-1. The Foundry Project is a child resource of the account and must be in the
-   same RG.
-2. ADE TTL expiration only deletes resources it deployed — if it creates a new
-   empty RG and the project is in a different RG via a cross-RG module, TTL
-   would delete the empty RG and leave the project orphaned.
+**Consequence:** ADE TTL expiration deletes the ADE-created (empty) RG but
+**does NOT delete the Foundry Project** in the Foundry account's RG.
+
+**Workarounds for automated cleanup:**
+
+1. **Azure Policy** — Tag projects with an expiry date at creation time, then
+   use a policy or Azure Automation runbook to delete expired projects.
+2. **ADE custom runner** — Build a custom extensibility runner that handles
+   both creation and deletion lifecycle hooks.
+3. **Scheduled cleanup** — Use an Azure Function or Logic App that queries for
+   projects tagged by ADE and deletes them after the TTL period.
+4. **Manual deletion** — Developer or admin deletes the project via the portal
+   or CLI when done.
 
 ### TTL Deletion Behavior (Core Hypothesis)
 
@@ -223,7 +233,8 @@ foundry-project-stack/
 └── environments/
     └── foundry-project/
         ├── environment.yaml             # ADE catalog manifest
-        └── main.bicep                   # Bicep template
+        ├── main.bicep                   # Entry point (cross-RG module call)
+        └── foundry-project.bicep        # Module: creates the Foundry Project
 ```
 
 ## Adding RBAC Back

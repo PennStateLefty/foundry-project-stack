@@ -79,6 +79,7 @@ was the #1 source of deployment failures during prototyping.
 | Role | Why |
 |------|-----|
 | **Contributor** | Create Foundry Projects (`Microsoft.CognitiveServices/accounts/projects/write`) and ARM deployments (`Microsoft.Resources/deployments/write`) in the target RG |
+| **User Access Administrator** | Create role assignments (`Microsoft.Authorization/roleAssignments/write`) on the Foundry Project for the developer's Azure AI User role |
 
 ```bash
 # Get the Environment Type MI's object ID from:
@@ -93,6 +94,13 @@ az role assignment create \
   --assignee-object-id <environment-type-mi-object-id> \
   --assignee-principal-type ServicePrincipal \
   --role "Contributor" \
+  --scope "/subscriptions/<sub>/resourceGroups/<foundry-rg>"
+
+# And User Access Administrator (for role assignments on the project):
+az role assignment create \
+  --assignee-object-id <environment-type-mi-object-id> \
+  --assignee-principal-type ServicePrincipal \
+  --role "User Access Administrator" \
   --scope "/subscriptions/<sub>/resourceGroups/<foundry-rg>"
 ```
 

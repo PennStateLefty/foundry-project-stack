@@ -1,48 +1,50 @@
 # Foundry Project Self-Service via Azure Deployment Environments
 
-> **Prototype / Proof of Concept**
+> **Prototype / Proof of Concept — Validated ✅**
 >
 > Can a developer use the Azure Deployment Environments (ADE) developer portal
-> to self-service create a Foundry Project under an existing Foundry account —
-> with automatic cleanup via ADE's TTL (time-to-live) policy?
+> to self-service create a Foundry Project under an existing Foundry account?
 
 ## What This Proves
 
 | Question | Answer |
 |----------|--------|
-| Can Bicep create a Foundry Project under an existing account? | Yes — `Microsoft.CognitiveServices/accounts/projects` is a standard ARM child resource. |
-| Can ADE catalog items deploy Foundry Projects? | Yes — ADE supports any valid Bicep template in its catalog. |
-| Does the developer portal surface the parameters? | Yes — `environment.yaml` parameter definitions render as form fields. |
-| Does ADE TTL auto-delete the Foundry Project? | **To be validated** — this is the core hypothesis. |
+| Can Bicep create a Foundry Project under an existing account? | ✅ Yes — `Microsoft.CognitiveServices/accounts/projects` is a standard ARM child resource. |
+| Can ADE catalog items deploy Foundry Projects? | ✅ Yes — ADE supports any valid Bicep template in its catalog. |
+| Does the developer portal surface the parameters? | ✅ Yes — `environment.yaml` parameter definitions render as form fields. |
+| Can ADE deploy cross-RG into the Foundry account's RG? | ✅ Yes — using a Bicep module scoped to the target RG. |
+| Does ADE TTL auto-delete the Foundry Project? | ⚠️ No — ADE TTL only deletes the ADE-created RG, not cross-RG resources. See [TTL Limitation](#ttl-limitation). |
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│  Azure Deployment Environments (ADE)            │
-│                                                 │
-│  Dev Center ─► ADE Project ─► Environment Type  │
-│                    │             (TTL policy)    │
-│                    ▼                             │
-│              GitHub Catalog                      │
-│              └── environments/                   │
-│                  └── foundry-project/            │
-│                      ├── environment.yaml        │
-│                      └── main.bicep              │
-└─────────────────────────────────────────────────┘
-                     │
-                     │  Developer clicks "Create Environment"
-                     │  in the ADE Developer Portal
-                     ▼
-┌─────────────────────────────────────────────────┐
-│  Existing Foundry Account                       │
-│  (Microsoft.CognitiveServices/accounts)         │
-│  kind: AIServices                               │
-│                                                 │
-│  └── New Foundry Project  ◄── created by Bicep  │
-│      (accounts/projects)                        │
-│      + Azure AI User role for the developer     │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  Azure Deployment Environments (ADE)                │
+│                                                     │
+│  Dev Center ─► ADE Project ─► Environment Type      │
+│                    │           (Sandbox)             │
+│                    ▼                                 │
+│              GitHub Catalog                          │
+│              └── environments/foundry-project/       │
+│                  ├── environment.yaml                │
+│                  ├── main.bicep  (entry, cross-RG)   │
+│                  └── foundry-project.bicep (module)  │
+└─────────────────────────────────────────────────────┘
+          │                              │
+          │ ADE creates a new            │ Bicep module deploys
+          │ (empty) RG per env           │ into existing RG
+          ▼                              ▼
+┌──────────────────┐    ┌─────────────────────────────────┐
+│  ADE-created RG  │    │  Foundry Account RG              │
+│  (empty, TTL     │    │  (rg-dev-center-foundry)         │
+│   deletes this)  │    │                                  │
+└──────────────────┘    │  Foundry Account                 │
+                        │  (Microsoft.CognitiveServices/   │
+                        │   accounts, kind: AIServices)    │
+                        │                                  │
+                        │  └── New Foundry Project  ◄───── │
+                        │      (accounts/projects)         │
+                        └─────────────────────────────────┘
 ```
 
 ## Prerequisites
@@ -54,22 +56,71 @@
 3. **Foundry Account** — an existing `Microsoft.CognitiveServices/accounts`
    resource with `kind: AIServices` and `allowProjectManagement: true`.
 
-### Permissions
+### Permissions (Critical — Read Carefully)
 
-The ADE deployment identity (managed identity assigned to the environment type)
-must have the following permissions on the **resource group** containing the
-Foundry account:
+ADE has **three distinct identities** that need permissions. Getting this wrong
+was the #1 source of deployment failures during prototyping.
 
-| Permission | Why |
-|------------|-----|
-| `Microsoft.CognitiveServices/accounts/projects/write` | Create the project |
-| `Microsoft.CognitiveServices/accounts/projects/delete` | TTL cleanup |
-| `Microsoft.CognitiveServices/accounts/read` | Reference the existing account |
+#### Identity Model
 
-> **Note:** RBAC role assignments have been removed from the Bicep template to
-> avoid ADE permission pre-flight validation issues. Assign **Azure AI User**
-> on the project manually after creation, or add role assignments back once
-> the ADE identity permissions are sorted out. See [Adding RBAC Back](#adding-rbac-back).
+| Identity | Where to Find | What It Does |
+|----------|---------------|--------------|
+| **Dev Center MI** | Dev Center resource → Identity | Manages catalogs and environment orchestration |
+| **ADE Project MI** | Not directly visible; inherited from Dev Center | Project-level operations |
+| **Environment Type MI** | ADE Project → Environment Types → [type] → Identity | **Actually executes ARM deployments** |
+
+> **The Environment Type's managed identity is the one that runs your Bicep
+> template.** This is the identity that needs deployment permissions.
+
+#### Required Role Assignments
+
+**1. Environment Type MI → on the Foundry account's resource group:**
+
+| Role | Why |
+|------|-----|
+| **Contributor** | Create Foundry Projects (`Microsoft.CognitiveServices/accounts/projects/write`) and ARM deployments (`Microsoft.Resources/deployments/write`) in the target RG |
+
+```bash
+# Get the Environment Type MI's object ID from:
+# Azure Portal → ADE Project → Environment Types → [type] → Identity
+# Or via REST API:
+az rest --method GET \
+  --url "https://management.azure.com/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.DevCenter/projects/<project>/environmentTypes/<type>?api-version=2025-04-01-preview" \
+  --query "identity.principalId" -o tsv
+
+# Then assign Contributor on the Foundry account's RG:
+az role assignment create \
+  --assignee-object-id <environment-type-mi-object-id> \
+  --assignee-principal-type ServicePrincipal \
+  --role "Contributor" \
+  --scope "/subscriptions/<sub>/resourceGroups/<foundry-rg>"
+```
+
+**2. Dev Center MI → on the target subscription:**
+
+| Role | Why |
+|------|-----|
+| **Owner** | ADE pre-flight validation checks the Dev Center identity for role assignment capabilities |
+| **User Access Administrator** | Required if your Bicep includes `Microsoft.Authorization/roleAssignments` resources |
+
+> **Note:** The Dev Center MI needs these even if the Bicep doesn't create role
+> assignments — ADE performs a pre-flight permission check. During prototyping,
+> we had to grant Owner + User Access Administrator at the subscription level
+> to pass this check.
+
+```bash
+# Get the Dev Center MI's object ID:
+az rest --method GET \
+  --url "https://management.azure.com/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.DevCenter/devcenters/<devcenter>?api-version=2025-04-01-preview" \
+  --query "identity.principalId" -o tsv
+
+# Assign Owner on the subscription:
+az role assignment create \
+  --assignee-object-id <devcenter-mi-object-id> \
+  --assignee-principal-type ServicePrincipal \
+  --role "Owner" \
+  --scope "/subscriptions/<sub>"
+```
 
 ## Setup
 
@@ -78,20 +129,29 @@ Foundry account:
 1. Navigate to your **Dev Center** in the Azure Portal.
 2. Go to **Catalogs** → **Add**.
 3. Select **GitHub** as the source.
-4. Point to this repository and set the **path** to `/environments`.
-5. Sync the catalog. The "Foundry Project" item should appear.
+4. You'll be prompted to install the **Microsoft Dev Center** GitHub App.
+   - Install it on your GitHub account/org.
+   - Grant access to the repository containing this code.
+5. Set the **path** to `/environments`.
+6. Sync the catalog. The `foundry-project` item should appear.
+
+> **Naming constraint:** The `name` field in `environment.yaml` must use
+> URL-safe characters (lowercase, hyphens, 3-63 chars). Spaces and
+> uppercase will cause catalog sync errors.
 
 ### 2. Configure the Environment Type
 
 1. In your **ADE Project**, go to **Environment Types**.
 2. Create or edit an environment type (e.g., "Sandbox").
-3. Set the **deployment identity** (managed identity with the permissions above).
-4. Set the **deployment subscription** to the subscription containing the Foundry
-   account.
+3. Set the **deployment identity** — use a system-assigned managed identity.
+4. Set the **deployment subscription** to the subscription containing the
+   Foundry account.
+5. Ensure the role assignments described above are in place.
 
-> **Note:** ADE always creates a new resource group per environment. The Bicep
+> **Note:** ADE always creates a **new resource group** per environment — there
+> is no option to deploy into an existing RG via the portal or CLI. The Bicep
 > template uses a cross-RG module to deploy the Foundry Project into the
-> Foundry account's existing RG. See [TTL Limitation](#ttl-limitation) below.
+> Foundry account's existing RG. See [TTL Limitation](#ttl-limitation).
 
 ### 3. Environment Expiration (TTL)
 
@@ -111,7 +171,7 @@ on the Environment Type.
 
 1. Go to the [ADE Developer Portal](https://devportal.microsoft.com).
 2. Select your project → **New Environment**.
-3. Choose the **"Foundry Project"** catalog item.
+3. Choose the **`foundry-project`** catalog item.
 4. Fill in the parameters:
    - `foundryAccountName` — name of the existing Foundry account.
    - `foundryAccountResourceGroup` — RG where the Foundry account lives.
@@ -121,24 +181,23 @@ on the Environment Type.
 
 ### Validate
 
-- [ ] The deployment succeeds (check ADE portal or Activity Log).
+- [x] The deployment succeeds (check ADE portal or Activity Log).
 - [ ] A new Foundry Project appears under the Foundry account in the Azure Portal.
 - [ ] The developer can access the project in the [Foundry portal](https://ai.azure.com).
-- [ ] The Azure AI User role is assigned on the project.
-- [ ] After TTL expiry (or manual deletion), the project and role assignment are removed.
+- [ ] After manual deletion of the ADE environment, the project is cleaned up.
 - [ ] The project name can be reused after deletion.
 
 ### Manual Cleanup (if needed)
 
 ```bash
-# Delete the ADE environment (triggers ARM cleanup)
+# Delete the ADE environment (only deletes the ADE-created empty RG)
 az devcenter dev environment delete \
   --dev-center-name <dev-center> \
   --project-name <ade-project> \
   --name <environment-name> \
   --user-id "me"
 
-# Or delete the Foundry project directly
+# Delete the Foundry project directly (required for cross-RG cleanup)
 az resource delete \
   --ids "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/projects/<project>"
 ```
@@ -158,9 +217,9 @@ az resource delete \
 
 ### Resources Created
 
-| Resource | Type |
-|----------|------|
-| Foundry Project | `Microsoft.CognitiveServices/accounts/projects` |
+| Resource | Type | Location |
+|----------|------|----------|
+| Foundry Project | `Microsoft.CognitiveServices/accounts/projects` | Foundry account's RG (cross-RG) |
 
 ### Outputs
 
@@ -175,9 +234,9 @@ az resource delete \
 ### TTL Limitation
 
 ADE always creates a **new resource group** per environment — there is no option
-to deploy into an existing RG. Since the Foundry Project must be a child of the
-existing Foundry account (in its own RG), the Bicep uses a cross-RG module to
-deploy the project into the Foundry account's RG.
+to deploy into an existing RG (confirmed via REST API and CLI). Since the Foundry
+Project must be a child of the existing Foundry account (in its own RG), the Bicep
+uses a cross-RG module to deploy the project into the Foundry account's RG.
 
 **Consequence:** ADE TTL expiration deletes the ADE-created (empty) RG but
 **does NOT delete the Foundry Project** in the Foundry account's RG.
@@ -193,36 +252,54 @@ deploy the project into the Foundry account's RG.
 4. **Manual deletion** — Developer or admin deletes the project via the portal
    or CLI when done.
 
-### TTL Deletion Behavior (Core Hypothesis)
+### RBAC Role Assignments
 
-ADE TTL deletes the environment, which typically means deleting the resource
-group or the individual resources deployed by the template. The key question is
-whether `Microsoft.CognitiveServices/accounts/projects` supports clean ARM
-DELETE without affecting the parent Foundry account. **This is the primary thing
-the prototype validates.**
+RBAC role assignments (e.g., Azure AI User for the developer) were removed from
+the Bicep template because ADE performs a **pre-flight permission check** on the
+**Dev Center identity** (not the Environment Type identity) for
+`Microsoft.Authorization/roleAssignments/write`. This check requires the Dev
+Center MI to have **User Access Administrator** at the **subscription level**,
+which may be too broad for some organizations.
 
-### Developer Principal ID
-
-ADE does not automatically inject the requesting user's principal ID into
-template parameters. For this prototype, the developer must provide their own
-Object ID. In a production implementation, this could be solved by:
-
-- A custom ADE extensibility runner that injects the principal ID.
-- A wrapper script or Azure Function that resolves the user identity.
-- Using ADE's built-in environment variables (if/when supported).
+**Current approach:** Assign Azure AI User on the Foundry Project manually after
+creation, or via a separate automation.
 
 ### Location Mismatch
 
-The project location must match the parent Foundry account's location. The
-template defaults to the resource group location, which may not match. Ensure
-the environment type's target resource group is in the same region as the
-Foundry account.
+The project location **must** match the parent Foundry account's location. The
+`location` parameter is required (no default) to make this explicit. Use the
+same region as the Foundry account.
 
 ### Name Reuse After Deletion
 
-Verify that Foundry Projects (CognitiveServices/accounts/projects) do not have
+Verify that Foundry Projects (`CognitiveServices/accounts/projects`) do not have
 a soft-delete retention period that blocks name reuse. This is less likely than
 with ML workspaces but should be confirmed.
+
+## Lessons Learned
+
+Key findings from the prototyping process:
+
+1. **Three identities, not one.** ADE has Dev Center MI, ADE Project MI, and
+   Environment Type MI. The Environment Type MI executes deployments, but the
+   Dev Center MI is checked during pre-flight validation.
+
+2. **Catalog item names must be URL-safe.** Spaces, uppercase, and special
+   characters in the `name` field of `environment.yaml` cause catalog sync errors.
+
+3. **No existing RG support.** ADE always creates a new RG per environment.
+   Cross-RG Bicep modules are required for deploying into pre-existing RGs.
+
+4. **TTL only covers ADE-created resources.** Cross-RG deployments are not
+   cleaned up by TTL expiration. Custom cleanup automation is needed.
+
+5. **`environment.yaml` defaults are literal strings.** A default like
+   `"[resourceGroup().location]"` is passed as a literal string, not evaluated
+   as an ARM expression. Either omit the default or use a real value.
+
+6. **The new Foundry resource model matters.** Post-Ignite 2025, Foundry uses
+   `Microsoft.CognitiveServices/accounts` (kind: AIServices) + `/projects`,
+   not the classic `Microsoft.MachineLearningServices/workspaces` hub model.
 
 ## File Structure
 
@@ -239,12 +316,10 @@ foundry-project-stack/
 
 ## Adding RBAC Back
 
-The Bicep template was simplified to remove role assignments due to ADE's
-permission pre-flight validation requiring the Dev Center identity to have
-`User Access Administrator` at the subscription level. To re-enable RBAC:
+To re-enable automated role assignments in the Bicep template:
 
 1. Add a `developerPrincipalId` parameter to `main.bicep` and `environment.yaml`.
-2. Add the role assignment resource:
+2. Add the role assignment resource in `foundry-project.bicep`:
 
 ```bicep
 var azureAiUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
@@ -260,9 +335,9 @@ resource aiUserAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' =
 }
 ```
 
-3. Grant **User Access Administrator** to the ADE deployment identity on the
-   target subscription (the Dev Center identity may also need this — the error
-   message references "DevCenter identity" specifically).
+3. Grant **User Access Administrator** to both:
+   - The **Dev Center MI** on the target subscription (for pre-flight validation)
+   - The **Environment Type MI** on the Foundry account's RG (for deployment)
 
 ## References
 

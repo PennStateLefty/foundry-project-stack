@@ -22,6 +22,9 @@ param displayName string
 @description('Description for the project.')
 param projectDescription string
 
+@description('Object ID (principal ID) of the developer to grant Azure AI User on the project.')
+param developerPrincipalId string
+
 // Reference the existing Foundry account in this resource group
 resource foundryAccount 'Microsoft.CognitiveServices/accounts@2025-06-01' existing = {
   name: foundryAccountName
@@ -38,6 +41,19 @@ resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2025-06-0
   properties: {
     displayName: displayName
     description: projectDescription
+  }
+}
+
+// Grant the developer Azure AI User on the Foundry Project
+var azureAiUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
+
+resource aiUserAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundryProject.id, developerPrincipalId, azureAiUserRoleId)
+  scope: foundryProject
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', azureAiUserRoleId)
+    principalId: developerPrincipalId
+    principalType: 'User'
   }
 }
 

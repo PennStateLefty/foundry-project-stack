@@ -39,6 +39,9 @@ param displayName string = projectName
 @description('Optional description for the project.')
 param projectDescription string = 'Self-service Foundry Project provisioned via Azure Deployment Environments.'
 
+@description('Object ID (principal ID) of the developer to grant Azure AI User on the project.')
+param developerPrincipalId string
+
 // === Module: Deploy project into the Foundry account's resource group ========
 
 module foundryProjectModule 'foundry-project.bicep' = {
@@ -50,6 +53,7 @@ module foundryProjectModule 'foundry-project.bicep' = {
     location: location
     displayName: displayName
     projectDescription: projectDescription
+    developerPrincipalId: developerPrincipalId
   }
 }
 

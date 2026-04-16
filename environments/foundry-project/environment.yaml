@@ -44,3 +44,9 @@ parameters:
     description: "Optional description for the project"
     type: string
     required: false
+
+  - id: developerPrincipalId
+    name: developerPrincipalId
+    description: "Object ID of the developer to grant Azure AI User on the project (find in Entra ID → Users)"
+    type: string
+    required: true

@@ -86,8 +86,13 @@ Foundry account:
 1. In your **ADE Project**, go to **Environment Types**.
 2. Create or edit an environment type (e.g., "Foundry-Dev").
 3. Set the **deployment identity** (managed identity with the permissions above).
-4. Set the **deployment subscription** and **resource group** where the Foundry
-   account lives.
+4. **CRITICAL:** Set the **resource group** to **"Use existing"** and select the
+   resource group where the Foundry account lives. Do NOT use "Create new".
+   - This ensures the Bicep template can reference the parent Foundry account.
+   - This ensures ADE TTL expiration deletes only the Foundry Project resource,
+     not the entire resource group.
+5. Set the **deployment subscription** to the subscription containing the Foundry
+   account.
 
 ### 3. Environment Expiration (TTL)
 
@@ -111,6 +116,7 @@ on the Environment Type.
 4. Fill in the parameters:
    - `foundryAccountName` — name of the existing Foundry account.
    - `projectName` — a unique name for your project.
+   - `location` — Azure region matching the Foundry account (e.g., `eastus2`).
 5. Click **Create**.
 
 ### Validate
@@ -143,9 +149,9 @@ az resource delete \
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `foundryAccountName` | Yes | Name of the existing Foundry account |
+| `foundryAccountName` | Yes | Name of the existing Foundry account (must be in the target RG) |
 | `projectName` | Yes | Name for the new Foundry Project (2-64 chars) |
-| `location` | No | Azure region (defaults to resource group location) |
+| `location` | Yes | Azure region (must match the Foundry account location) |
 | `displayName` | No | Friendly name shown in the Foundry portal |
 | `projectDescription` | No | Description of the project |
 
@@ -164,6 +170,18 @@ az resource delete \
 | `projectPrincipalId` | System-assigned managed identity principal ID |
 
 ## Known Risks & Limitations
+
+### Existing Resource Group Requirement
+
+The ADE Environment Type **must** be configured to use the existing resource
+group where the Foundry account lives (not "Create new"). This is required
+because:
+
+1. The Foundry Project is a child resource of the account and must be in the
+   same RG.
+2. ADE TTL expiration only deletes resources it deployed — if it creates a new
+   empty RG and the project is in a different RG via a cross-RG module, TTL
+   would delete the empty RG and leave the project orphaned.
 
 ### TTL Deletion Behavior (Core Hypothesis)
 

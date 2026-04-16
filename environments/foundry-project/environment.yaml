@@ -11,13 +11,7 @@ templatePath: main.bicep
 parameters:
   - id: foundryAccountName
     name: foundryAccountName
-    description: "Name of the existing Foundry account (CognitiveServices/accounts resource)"
-    type: string
-    required: true
-
-  - id: foundryAccountResourceGroup
-    name: foundryAccountResourceGroup
-    description: "Resource group containing the existing Foundry account"
+    description: "Name of the existing Foundry account (must be in the same resource group targeted by this environment type)"
     type: string
     required: true
 

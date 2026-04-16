@@ -47,6 +47,7 @@ parameters:
 
   - id: developerPrincipalId
     name: developerPrincipalId
-    description: "Object ID of the developer to grant Azure AI User on the project (find in Entra ID → Users)"
+    description: "Object ID of the developer — auto-populated from ADE creator context"
     type: string
-    required: true
+    required: false
+    default: ${{ AZURE_ENV_CREATOR_PRINCIPAL_ID }}

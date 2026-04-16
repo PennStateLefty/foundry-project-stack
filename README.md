@@ -220,6 +220,7 @@ az resource delete \
 | Resource | Type | Location |
 |----------|------|----------|
 | Foundry Project | `Microsoft.CognitiveServices/accounts/projects` | Foundry account's RG (cross-RG) |
+| Role Assignment | `Microsoft.Authorization/roleAssignments` | Scoped to the Foundry Project (Azure AI User) |
 
 ### Outputs
 
@@ -254,15 +255,18 @@ uses a cross-RG module to deploy the project into the Foundry account's RG.
 
 ### RBAC Role Assignments
 
-RBAC role assignments (e.g., Azure AI User for the developer) were removed from
-the Bicep template because ADE performs a **pre-flight permission check** on the
-**Dev Center identity** (not the Environment Type identity) for
-`Microsoft.Authorization/roleAssignments/write`. This check requires the Dev
-Center MI to have **User Access Administrator** at the **subscription level**,
-which may be too broad for some organizations.
+The developer's **Azure AI User** role is automatically assigned on the Foundry
+Project using ADE's built-in `AZURE_ENV_CREATOR_PRINCIPAL_ID` variable — the
+developer doesn't need to enter any identity information. ADE injects the Object
+ID of the user who creates the environment.
 
-**Current approach:** Assign Azure AI User on the Foundry Project manually after
-creation, or via a separate automation.
+For this to work, ADE performs a **pre-flight permission check** on the **Dev
+Center identity** (not the Environment Type identity) for
+`Microsoft.Authorization/roleAssignments/write`. The Dev Center MI needs **User
+Access Administrator** at the **subscription level**.
+
+If this is too broad for your organization, remove the role assignment from the
+Bicep and assign Azure AI User manually after creation.
 
 ### Location Mismatch
 
@@ -316,28 +320,11 @@ foundry-project-stack/
 
 ## Adding RBAC Back
 
-To re-enable automated role assignments in the Bicep template:
-
-1. Add a `developerPrincipalId` parameter to `main.bicep` and `environment.yaml`.
-2. Add the role assignment resource in `foundry-project.bicep`:
-
-```bicep
-var azureAiUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
-
-resource aiUserAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(foundryProject.id, developerPrincipalId, azureAiUserRoleId)
-  scope: foundryProject
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', azureAiUserRoleId)
-    principalId: developerPrincipalId
-    principalType: 'User'
-  }
-}
-```
-
-3. Grant **User Access Administrator** to both:
-   - The **Dev Center MI** on the target subscription (for pre-flight validation)
-   - The **Environment Type MI** on the Foundry account's RG (for deployment)
+The Azure AI User role assignment is included by default, using ADE's built-in
+`AZURE_ENV_CREATOR_PRINCIPAL_ID` to automatically grant the creating developer
+access. If you need to **remove** it (e.g., the Dev Center MI cannot be granted
+User Access Administrator), delete the `aiUserAssignment` resource from
+`foundry-project.bicep` and the `developerPrincipalId` parameter from all files.
 
 ## References
 

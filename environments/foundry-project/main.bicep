@@ -39,7 +39,7 @@ param displayName string = projectName
 @description('Optional description for the project.')
 param projectDescription string = 'Self-service Foundry Project provisioned via Azure Deployment Environments.'
 
-@description('Object ID (principal ID) of the developer to grant Azure AI User on the project.')
+@description('Object ID of the developer. Auto-populated by ADE from the requesting user context.')
 param developerPrincipalId string
 
 // === Module: Deploy project into the Foundry account's resource group ========

@@ -185,6 +185,7 @@ on the Environment Type.
    - `foundryAccountResourceGroup` — RG where the Foundry account lives.
    - `projectName` — a unique name for your project.
    - `location` — Azure region matching the Foundry account (e.g., `eastus2`).
+   - `developerPrincipalId` — your Entra Object ID (Azure Portal → Entra ID → Users → your profile).
 5. Click **Create**.
 
 ### Validate
@@ -222,6 +223,7 @@ az resource delete \
 | `location` | Yes | Azure region (must match the Foundry account location) |
 | `displayName` | No | Friendly name shown in the Foundry portal |
 | `projectDescription` | No | Description of the project |
+| `developerPrincipalId` | Yes | Developer's Entra Object ID (for Azure AI User role assignment) |
 
 ### Resources Created
 
@@ -263,15 +265,21 @@ uses a cross-RG module to deploy the project into the Foundry account's RG.
 
 ### RBAC Role Assignments
 
-The developer's **Azure AI User** role is automatically assigned on the Foundry
-Project using ADE's built-in `AZURE_ENV_CREATOR_PRINCIPAL_ID` variable — the
-developer doesn't need to enter any identity information. ADE injects the Object
-ID of the user who creates the environment.
+The developer's **Azure AI User** role is assigned on the Foundry Project
+automatically during deployment. The developer must provide their **Entra Object
+ID** as a parameter (found in Azure Portal → Entra ID → Users → profile).
+
+> **Why not automatic?** ADE's built-in Bicep runner does not support variable
+> injection (`${{ AZURE_ENV_CREATOR_PRINCIPAL_ID }}`) in `environment.yaml`
+> defaults — that syntax only works with custom container runners. A production
+> implementation could use a [custom ADE runner](https://learn.microsoft.com/en-us/azure/deployment-environments/how-to-configure-extensibility-generic-container-image)
+> to inject the creator's identity automatically.
 
 For this to work, ADE performs a **pre-flight permission check** on the **Dev
 Center identity** (not the Environment Type identity) for
 `Microsoft.Authorization/roleAssignments/write`. The Dev Center MI needs **User
-Access Administrator** at the **subscription level**.
+Access Administrator** at the **subscription level**. The Environment Type MI
+also needs **User Access Administrator** on the Foundry account's RG.
 
 If this is too broad for your organization, remove the role assignment from the
 Bicep and assign Azure AI User manually after creation.
@@ -328,11 +336,15 @@ foundry-project-stack/
 
 ## Adding RBAC Back
 
-The Azure AI User role assignment is included by default, using ADE's built-in
-`AZURE_ENV_CREATOR_PRINCIPAL_ID` to automatically grant the creating developer
-access. If you need to **remove** it (e.g., the Dev Center MI cannot be granted
-User Access Administrator), delete the `aiUserAssignment` resource from
-`foundry-project.bicep` and the `developerPrincipalId` parameter from all files.
+The Azure AI User role assignment is included by default. The developer provides
+their Entra Object ID as a parameter. If you need to **remove** it (e.g., the
+Dev Center MI cannot be granted User Access Administrator), delete the
+`aiUserAssignment` resource from `foundry-project.bicep` and the
+`developerPrincipalId` parameter from all files.
+
+**Production enhancement:** Use a [custom ADE runner](https://learn.microsoft.com/en-us/azure/deployment-environments/how-to-configure-extensibility-generic-container-image)
+to inject `AZURE_ENV_CREATOR_PRINCIPAL_ID` automatically, eliminating the need
+for the developer to look up their Object ID.
 
 ## References
 

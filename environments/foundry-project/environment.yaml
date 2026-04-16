@@ -47,7 +47,6 @@ parameters:
 
   - id: developerPrincipalId
     name: developerPrincipalId
-    description: "Object ID of the developer — auto-populated from ADE creator context"
+    description: "Your Entra Object ID (Azure Portal → Entra ID → Users → your profile → Object ID)"
     type: string
-    required: false
-    default: ${{ AZURE_ENV_CREATOR_PRINCIPAL_ID }}
+    required: true

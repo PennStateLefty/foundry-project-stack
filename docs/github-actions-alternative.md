@@ -135,6 +135,11 @@ az ad app federated-credential create \
 
 The service principal needs permissions on the Foundry account's resource group:
 
+> **Note:** Unlike ADE (which requires subscription-level User Access Administrator
+> due to its pre-flight validation layer), the GitHub Actions approach only needs
+> RG-scoped permissions. ARM checks `roleAssignments/write` at the scope where
+> the assignment is created — which is the Foundry Project inside this RG.
+
 ```bash
 SP_OID=$(az ad sp show --id <appId> --query id -o tsv)
 

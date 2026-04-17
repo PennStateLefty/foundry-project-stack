@@ -1,8 +1,20 @@
 name: Deploy Foundry Project
 
 on:
-  issues:
-    types: [labeled]
+  # Triggered when the AI triage workflow completes.
+  # GITHUB_TOKEN-based label events don't trigger other workflows,
+  # but workflow_run does — this bridges the triage → deploy gap.
+  workflow_run:
+    workflows: ["Foundry Project Request Triage"]
+    types: [completed]
+
+  # Manual fallback — enter an issue number to deploy directly
+  workflow_dispatch:
+    inputs:
+      issue-number:
+        description: "Issue number to deploy (must have 'approved' label)"
+        required: true
+        type: string
 
 permissions:
   id-token: write
@@ -15,7 +27,6 @@ env:
 jobs:
   deploy:
     name: Deploy Foundry Project
-    if: github.event.label.name == 'approved' && contains(github.event.issue.labels.*.name, 'foundry-project-request')
     runs-on: ubuntu-latest
     environment: azure-deploy
 
@@ -23,12 +34,67 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Parse issue form fields
-        id: parse
+      - name: Find approved issue
+        id: find-issue
         uses: actions/github-script@v7
         with:
           script: |
-            const body = context.payload.issue.body;
+            let issueNumber;
+
+            if (context.eventName === 'workflow_dispatch') {
+              // Manual trigger — use the provided issue number
+              issueNumber = parseInt('${{ inputs.issue-number }}', 10);
+            } else {
+              // workflow_run trigger — find the most recent approved issue
+              const { data: issues } = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: 'foundry-project-request,approved',
+                state: 'open',
+                sort: 'created',
+                direction: 'desc',
+                per_page: 1,
+              });
+
+              if (issues.length === 0) {
+                core.info('No open approved foundry-project-request issues found. Skipping.');
+                core.setOutput('found', 'false');
+                return;
+              }
+              issueNumber = issues[0].number;
+            }
+
+            // Fetch the issue and verify labels
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+            });
+
+            const labels = issue.labels.map(l => l.name);
+            if (!labels.includes('approved') || !labels.includes('foundry-project-request')) {
+              core.setFailed(`Issue #${issueNumber} is missing required labels (need: approved + foundry-project-request)`);
+              return;
+            }
+            if (labels.includes('deployed')) {
+              core.info(`Issue #${issueNumber} already deployed. Skipping.`);
+              core.setOutput('found', 'false');
+              return;
+            }
+
+            core.setOutput('found', 'true');
+            core.setOutput('issueNumber', issueNumber.toString());
+            core.setOutput('issueBody', issue.body);
+
+      - name: Parse issue form fields
+        if: steps.find-issue.outputs.found == 'true'
+        id: parse
+        uses: actions/github-script@v7
+        env:
+          ISSUE_BODY: ${{ steps.find-issue.outputs.issueBody }}
+        with:
+          script: |
+            const body = process.env.ISSUE_BODY;
 
             function extractField(body, label) {
               // GitHub issue forms render as "### Label\n\nValue\n"
@@ -78,9 +144,10 @@ jobs:
             }
             core.setOutput('ttlDays', ttlDays.toString());
             core.setOutput('expiresAt', expiresAt);
-            core.setOutput('issueNumber', context.payload.issue.number.toString());
+            core.setOutput('issueNumber', '${{ steps.find-issue.outputs.issueNumber }}');
 
       - name: Validate against allowlist
+        if: steps.find-issue.outputs.found == 'true'
         id: validate
         run: |
           ACCOUNT="${{ steps.parse.outputs.foundryAccountName }}"
@@ -99,6 +166,7 @@ jobs:
           echo "target-validated=true" >> "$GITHUB_OUTPUT"
 
       - name: Login to Azure (OIDC)
+        if: steps.find-issue.outputs.found == 'true'
         uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
@@ -106,6 +174,7 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Resolve Entra UPN to Object ID
+        if: steps.find-issue.outputs.found == 'true'
         id: resolve-identity
         run: |
           UPN="${{ steps.parse.outputs.entraUpn }}"
@@ -120,6 +189,7 @@ jobs:
           echo "Resolved $UPN → $OID"
 
       - name: Get Foundry account location
+        if: steps.find-issue.outputs.found == 'true'
         id: get-location
         run: |
           ACCOUNT="${{ steps.parse.outputs.foundryAccountName }}"
@@ -139,6 +209,7 @@ jobs:
           echo "Foundry account location: $LOCATION"
 
       - name: Deploy Bicep template
+        if: steps.find-issue.outputs.found == 'true'
         id: deploy
         run: |
           PROJECT_NAME="${{ steps.parse.outputs.projectName }}"
@@ -195,10 +266,11 @@ jobs:
           echo "resourceId=$RESOURCE_ID" >> "$GITHUB_OUTPUT"
 
       - name: Comment on issue with result
-        if: success()
+        if: success() && steps.find-issue.outputs.found == 'true'
         uses: actions/github-script@v7
         with:
           script: |
+            const issueNumber = parseInt('${{ steps.find-issue.outputs.issueNumber }}', 10);
             const resourceId = '${{ steps.deploy.outputs.resourceId }}';
             const projectName = '${{ steps.parse.outputs.projectName }}';
             const location = '${{ steps.get-location.outputs.location }}';
@@ -228,34 +300,43 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.payload.issue.number,
+              issue_number: issueNumber,
               body: body,
+            });
+
+            // Add 'deployed' label to prevent re-processing
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: ['deployed'],
             });
 
             await github.rest.issues.update({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.payload.issue.number,
+              issue_number: issueNumber,
               state: 'closed',
               state_reason: 'completed',
             });
 
       - name: Comment on issue with failure
-        if: failure()
+        if: failure() && steps.find-issue.outputs.found == 'true'
         uses: actions/github-script@v7
         with:
           script: |
+            const issueNumber = parseInt('${{ steps.find-issue.outputs.issueNumber }}', 10);
             const body = `## ❌ Foundry Project Deployment Failed
 
             The deployment encountered an error. Please check the
             [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
             for details.
 
-            A team admin can re-trigger by removing and re-adding the \`approved\` label.`;
+            A team admin can re-trigger by running the deploy workflow manually with issue number \`${issueNumber}\`.`;
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.payload.issue.number,
+              issue_number: issueNumber,
               body: body,
             });

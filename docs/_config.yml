@@ -1,0 +1,20 @@
+title: "Foundry Project Self-Service"
+description: "Prototyping self-service Foundry Project provisioning with Azure Deployment Environments and GitHub Actions"
+remote_theme: pages-themes/cayman@v0.2.0
+plugins:
+  - jekyll-remote-theme
+
+# Mermaid support
+mermaid:
+  version: "11"
+
+# Navigation (used by layouts)
+header_pages:
+  - index.md
+  - platform-engineering.md
+  - ade-approach.md
+  - github-actions-approach.md
+  - comparison.md
+
+# GitHub metadata
+repository: PennStateLefty/foundry-project-stack

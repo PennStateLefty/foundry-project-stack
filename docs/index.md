@@ -35,7 +35,7 @@ When we say "self-service provisioning," we mean a workflow where:
 
 ## High-Level Flow
 
-<div class="mermaid">
+```mermaid
 flowchart LR
     A[Developer] --> B[Request Form]
     B --> C[Policy Validation]
@@ -43,7 +43,7 @@ flowchart LR
     D --> E[Bicep Deployment]
     E --> F[Foundry Project + RBAC]
     F --> G[Developer Access]
-</div>
+```
 
 ## Two Approaches Explored
 

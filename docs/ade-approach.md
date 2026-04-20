@@ -19,7 +19,7 @@ For our Foundry Project provisioning use case, we explored whether ADE could ser
 
 The following diagram shows how ADE orchestrates Foundry Project creation. Note the cross-RG deployment pattern — this is where things get interesting.
 
-<div class="mermaid">
+```mermaid
 flowchart TB
   Dev["Developer"] -->|"Dev Portal"| ADE["ADE Project"]
   ADE -->|"Catalog Sync"| GH["GitHub Repo<br/>environments/foundry-project/"]
@@ -37,7 +37,7 @@ flowchart TB
   subgraph EmptyRG["ADE-Created RG (empty)"]
     Nothing["(no resources)<br/>TTL deletes this only"]
   end
-</div>
+```
 
 ADE creates a fresh resource group for every environment, deploys `main.bicep` into it, and our template reaches across into the existing Foundry account's RG to create the project as a child resource. The ADE-created RG itself ends up empty — a consequence of the architectural mismatch we explore below.
 
@@ -68,11 +68,11 @@ This forces us into a **cross-RG deployment pattern**: ADE creates an empty RG, 
 
 ADE's TTL mechanism deletes the ADE-created resource group when the environment expires. Since our Foundry Project lives in a _different_ resource group, it survives the cleanup entirely.
 
-<div class="mermaid">
+```mermaid
 flowchart LR
   TTL["ADE TTL Expires"] -->|"Deletes"| EmptyRG["Empty ADE RG ✅"]
   TTL -.->|"Does NOT delete"| Project["Foundry Project ❌"]
-</div>
+```
 
 The developer sees the environment disappear from the Dev Portal, but the actual Foundry Project — and its associated compute, storage, and costs — lives on indefinitely. We would need a separate cleanup mechanism to handle the real resources, which defeats the purpose of ADE's built-in TTL.
 

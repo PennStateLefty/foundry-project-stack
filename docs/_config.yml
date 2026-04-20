@@ -9,7 +9,7 @@ color_scheme: light
 search_enabled: true
 nav_enabled: true
 
-# Mermaid support (just-the-docs has built-in support)
+# Mermaid support (built-in to just-the-docs)
 mermaid:
   version: "11"
 

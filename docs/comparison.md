@@ -39,7 +39,7 @@ This page provides a detailed comparison to help you choose the right approach f
 
 Use the flowchart below to determine which approach best fits your scenario.
 
-<div class="mermaid">
+```mermaid
 flowchart TB
   Start["Need self-service<br/>Foundry Projects?"] --> Q1{"Organization<br/>uses GitHub?"}
   Q1 -->|"No"| ADE["Use ADE Approach"]
@@ -54,7 +54,7 @@ flowchart TB
 
   style ADE_Note fill:#f0f0f0,stroke:#999
   style GHA_Note fill:#f0f0f0,stroke:#999
-</div>
+```
 
 ---
 

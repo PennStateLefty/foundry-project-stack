@@ -28,7 +28,7 @@ The challenge is that Foundry Projects are ARM child resources (`Microsoft.Cogni
 
 We evaluate two approaches to self-service Foundry Project provisioning. Both share the same underlying infrastructure-as-code, but they differ in how they expose the self-service interface and handle identity, lifecycle, and governance.
 
-<div class="mermaid">
+```mermaid
 flowchart TB
   subgraph IDP["Internal Developer Platform"]
     direction TB
@@ -55,7 +55,7 @@ flowchart TB
   ADE --> IaC
   GHA --> IaC
   IaC --> Azure["Azure AI Foundry Project"]
-</div>
+```
 
 **Approach 1 — Azure Deployment Environments (ADE)** uses Microsoft's managed platform to give developers a portal-based provisioning experience. ADE handles catalog management, environment lifecycle, and identity — but its resource-group-centric model creates friction with Foundry's child-resource architecture.
 
@@ -70,12 +70,12 @@ Regardless of which approach we use, both share the same core infrastructure:
 - **The same cross-RG deployment pattern** — The entry Bicep deploys in one scope, then uses a module scoped to the Foundry account's resource group to create the child resource.
 - **The same RBAC model** — Both approaches assign the Azure AI User role on the newly created Project to the requesting developer's identity.
 
-<div class="mermaid">
+```mermaid
 flowchart LR
   main["main.bicep<br/>(entry point)"] -->|"cross-RG module"| fp["foundry-project.bicep"]
   fp --> Project["Foundry Project"]
   fp --> RBAC["Azure AI User<br/>Role Assignment"]
-</div>
+```
 
 This shared foundation means the actual provisioning logic is written once and reused. The two approaches differ in _how they invoke_ this template, not in _what it does_.
 

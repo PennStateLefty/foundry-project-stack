@@ -13,7 +13,7 @@ The result is a self-service provisioning pipeline that lives entirely within th
 
 ## Architecture
 
-<div class="mermaid">
+```mermaid
 flowchart TB
   Dev["Developer"] -->|"Opens Issue"| Issue["GitHub Issue<br/>(Form Template)"]
   Issue -->|"triggers"| Triage["AI Triage<br/>(Agentic Workflow)"]
@@ -28,7 +28,7 @@ flowchart TB
   
   Cron["Daily Cron"] -->|"Query tagged resources"| Cleanup["Cleanup Workflow"]
   Cleanup -->|"Delete expired"| Project
-</div>
+```
 
 ## The Four Workflows
 
@@ -135,7 +135,7 @@ We want to be transparent about the limitations of this approach:
 
 We designed this approach with defense-in-depth — multiple independent layers that each provide a security gate:
 
-<div class="mermaid">
+```mermaid
 flowchart TB
   subgraph Layers["Security Layers"]
     direction TB
@@ -148,7 +148,7 @@ flowchart TB
     L7["Tag-scoped Cleanup<br/>(only deletes own resources)"]
     L1 --> L2 --> L3 --> L4 --> L5 --> L6 --> L7
   end
-</div>
+```
 
 **Layer 1 — Issue Creation:** Only users with access to the repository can open issues. In a private repo, this limits requestors to collaborators.
 

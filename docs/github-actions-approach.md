@@ -1,6 +1,8 @@
 ---
-layout: page
-title: "GitHub Actions Approach"
+layout: default
+title: GitHub Actions Approach
+nav_order: 4
+has_children: true
 ---
 
 ## Why GitHub Actions?

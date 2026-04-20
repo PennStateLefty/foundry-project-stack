@@ -1,6 +1,7 @@
 ---
-layout: page
-title: "Side-by-Side Comparison"
+layout: default
+title: Comparison
+nav_order: 5
 ---
 
 # Side-by-Side Comparison

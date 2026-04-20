@@ -1,6 +1,7 @@
 ---
-layout: page
-title: "Platform Engineering Context"
+layout: default
+title: Platform Engineering
+nav_order: 2
 ---
 
 ## What is Platform Engineering?

@@ -1,6 +1,8 @@
 ---
-layout: page
-title: "ADE Setup Guide"
+layout: default
+title: ADE Setup Guide
+parent: ADE Approach
+nav_order: 1
 ---
 
 # Azure Deployment Environments — Setup Guide

@@ -1,6 +1,8 @@
 ---
-layout: page
-title: "Azure Deployment Environments Approach"
+layout: default
+title: ADE Approach
+nav_order: 3
+has_children: true
 ---
 
 ## What is Azure Deployment Environments?

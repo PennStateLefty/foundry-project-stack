@@ -1,6 +1,7 @@
 ---
-layout: page
-title: "Foundry Project Self-Service Provisioning"
+layout: default
+title: Home
+nav_order: 1
 ---
 
 # Foundry Project Self-Service Provisioning

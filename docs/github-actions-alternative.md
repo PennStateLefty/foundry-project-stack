@@ -1,6 +1,8 @@
 ---
-layout: page
-title: "GitHub Actions Setup Guide"
+layout: default
+title: GitHub Actions Setup Guide
+parent: GitHub Actions Approach
+nav_order: 1
 ---
 
 # GitHub Actions Alternative for Foundry Project Self-Service

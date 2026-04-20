@@ -15,17 +15,16 @@ The result is a self-service provisioning pipeline that lives entirely within th
 
 ```mermaid
 flowchart TB
-  Dev["Developer"] -->|"Opens Issue"| Issue["GitHub Issue<br/>(Form Template)"]
-  Issue -->|"triggers"| Triage["AI Triage<br/>(Agentic Workflow)"]
-  Triage -->|"validates against"| Config["config/allowed-targets.json"]
-  Triage -->|"approved ✅"| Label["'approved' label"]
-  Triage -->|"needs review ⚠️"| Review["'needs-review' label<br/>+ admin notification"]
-  Label -->|"workflow_run trigger"| Deploy["Deploy Workflow"]
+  Dev["Developer"] -->|"Opens Issue"| Issue["GitHub Issue Form"]
+  Issue -->|"triggers"| Triage["AI Triage"]
+  Triage -->|"validates against"| Config["allowed-targets.json"]
+  Triage -->|"approved"| Label["approved label"]
+  Triage -->|"needs review"| Review["needs-review label"]
+  Label -->|"workflow_run"| Deploy["Deploy Workflow"]
   Deploy -->|"OIDC login"| Azure["Azure"]
-  Deploy -->|"az ad user show"| UPN["Resolve UPN → Object ID"]
-  Deploy -->|"az deployment group create"| Bicep["Bicep Template"]
-  Bicep --> Project["Foundry Project<br/>+ RBAC + Tags"]
-  
+  Deploy -->|"resolve UPN"| UPN["UPN to Object ID"]
+  Deploy -->|"deploy Bicep"| Bicep["Bicep Template"]
+  Bicep --> Project["Foundry Project + RBAC + Tags"]
   Cron["Daily Cron"] -->|"Query tagged resources"| Cleanup["Cleanup Workflow"]
   Cleanup -->|"Delete expired"| Project
 ```
@@ -137,17 +136,12 @@ We designed this approach with defense-in-depth — multiple independent layers 
 
 ```mermaid
 flowchart TB
-  subgraph Layers["Security Layers"]
-    direction TB
-    L1["Issue Creation<br/>(repo access control)"]
-    L2["AI Triage<br/>(allowlist validation)"]
-    L3["Label Gate<br/>(only triage can approve)"]
-    L4["GitHub Environment<br/>(optional reviewer gate)"]
-    L5["OIDC Auth<br/>(no stored secrets)"]
-    L6["RG-scoped RBAC<br/>(least privilege)"]
-    L7["Tag-scoped Cleanup<br/>(only deletes own resources)"]
-    L1 --> L2 --> L3 --> L4 --> L5 --> L6 --> L7
-  end
+  L1["1. Issue Creation - repo access control"] --> L2["2. AI Triage - allowlist validation"]
+  L2 --> L3["3. Label Gate - only triage can approve"]
+  L3 --> L4["4. GitHub Environment - optional reviewer gate"]
+  L4 --> L5["5. OIDC Auth - no stored secrets"]
+  L5 --> L6["6. RG-scoped RBAC - least privilege"]
+  L6 --> L7["7. Tag-scoped Cleanup - only deletes own resources"]
 ```
 
 **Layer 1 — Issue Creation:** Only users with access to the repository can open issues. In a private repo, this limits requestors to collaborators.

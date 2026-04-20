@@ -22,20 +22,18 @@ The following diagram shows how ADE orchestrates Foundry Project creation. Note 
 ```mermaid
 flowchart TB
   Dev["Developer"] -->|"Dev Portal"| ADE["ADE Project"]
-  ADE -->|"Catalog Sync"| GH["GitHub Repo<br/>environments/foundry-project/"]
-  ADE -->|"Creates"| EmptyRG["New Empty RG<br/>(per environment)"]
+  ADE -->|"Catalog Sync"| GH["GitHub Repo"]
+  ADE -->|"Creates"| EmptyRG["New Empty RG"]
   ADE -->|"Executes"| Bicep["main.bicep"]
   Bicep -->|"Cross-RG Module"| FP["foundry-project.bicep"]
-  FP -->|"Deploys into"| TargetRG["Foundry Account RG"]
+  FP -->|"Deploys into"| FoundryRG
 
-  subgraph TargetRG["Existing Foundry Account RG"]
-    Account["Foundry Account<br/>(CognitiveServices/accounts)"]
-    Project["New Foundry Project<br/>(accounts/projects)"]
-    Account --> Project
+  subgraph FoundryRG["Existing Foundry Account RG"]
+    Account["Foundry Account"] --> Project["New Foundry Project"]
   end
 
-  subgraph EmptyRG["ADE-Created RG (empty)"]
-    Nothing["(no resources)<br/>TTL deletes this only"]
+  subgraph AdeRG["ADE-Created RG"]
+    Nothing["No resources -- TTL deletes this only"]
   end
 ```
 
@@ -70,8 +68,8 @@ ADE's TTL mechanism deletes the ADE-created resource group when the environment 
 
 ```mermaid
 flowchart LR
-  TTL["ADE TTL Expires"] -->|"Deletes"| EmptyRG["Empty ADE RG ✅"]
-  TTL -.->|"Does NOT delete"| Project["Foundry Project ❌"]
+  TTL["ADE TTL Expires"] -->|"Deletes"| EmptyRG2["Empty ADE RG"]
+  TTL -.->|"Does NOT delete"| Project2["Foundry Project"]
 ```
 
 The developer sees the environment disappear from the Dev Portal, but the actual Foundry Project — and its associated compute, storage, and costs — lives on indefinitely. We would need a separate cleanup mechanism to handle the real resources, which defeats the purpose of ADE's built-in TTL.

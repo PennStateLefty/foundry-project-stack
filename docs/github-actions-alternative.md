@@ -1,3 +1,8 @@
+---
+layout: page
+title: "GitHub Actions Setup Guide"
+---
+
 # GitHub Actions Alternative for Foundry Project Self-Service
 
 > **Companion to the ADE approach** — use this when you need working TTL cleanup,
@@ -114,7 +119,7 @@ anywhere. GitHub Actions OIDC supports two identity types:
 
 #### Path A: App Registration (Recommended)
 
-<details>
+<details markdown="1">
 <summary>Click to expand App Registration setup</summary>
 
 ##### Step A1: Create the App Registration
@@ -200,7 +205,7 @@ az ad app permission admin-consent --id <appId>
 
 #### Path B: User-Assigned Managed Identity
 
-<details>
+<details markdown="1">
 <summary>Click to expand UAMI setup</summary>
 
 > **Why this is different:** A User-Assigned Managed Identity (UAMI) creates an

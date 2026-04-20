@@ -121,7 +121,7 @@ The high-level setup flow for ADE-based Foundry Project provisioning:
    - Dev Center MI → **Owner + User Access Administrator** on the target subscription.
 4. **Developer creates an environment** via the Azure Dev Portal, selecting the Foundry Project template and providing parameters.
 
-For detailed setup instructions, see the [ADE README](https://github.com/PennStateLefty/foundry-project-stack/blob/main/README.md).
+For detailed setup instructions, see the [ADE Setup Guide](ade-setup.md).
 
 ## Verdict
 

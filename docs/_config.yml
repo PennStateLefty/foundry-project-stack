@@ -13,7 +13,9 @@ header_pages:
   - index.md
   - platform-engineering.md
   - ade-approach.md
+  - ade-setup.md
   - github-actions-approach.md
+  - github-actions-alternative.md
   - comparison.md
 
 # GitHub metadata
